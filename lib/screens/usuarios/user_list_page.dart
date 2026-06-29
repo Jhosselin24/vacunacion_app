@@ -135,9 +135,12 @@ class _UserListPageState extends State<UserListPage>
 
     if (confirmar != true) return;
 
-    final error = await _userService.asignarSector(
+    // ✅ Fix: se usa reasignarSector (acepta sectorId nulo) en lugar de
+    // asignarSector, para poder quitar el sector correctamente cuando
+    // el coordinador selecciona "Sin sector".
+    final error = await _userService.reasignarSector(
       usuarioId: usuario.id,
-      sectorId:  sectorSeleccionado ?? '',
+      nuevoSectorId: sectorSeleccionado,
     );
 
     if (!mounted) return;

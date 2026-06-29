@@ -404,10 +404,13 @@ class _BrigadaDashboardState extends State<BrigadaDashboard> {
           IconButton(
             icon: const Icon(Icons.edit_outlined,
                 color: AppColors.primary, size: 20),
-            onPressed: () => context.go(
-              AppConstants.routeEditVacunacion,
-              extra: v.toUpdateJson()..['id'] = v.id,
-            ),
+            onPressed: () async {
+              await context.push(
+                AppConstants.routeEditVacunacion,
+                extra: {'vacunacion': v},
+              );
+              _cargarDatos();
+            },
           ),
         ],
       ),

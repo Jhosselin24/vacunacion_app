@@ -33,26 +33,29 @@ class SectorService {
     }
   }
 
-  // ── Crear sector ───────────────────────────────────────────
+  // ── CREAR SECTOR (original) ────────────────────────────────
   Future<String?> crearSector({
     required String nombre,
     String? descripcion,
   }) async {
     try {
       await _supabase.from('sectores').insert({
-        'nombre':      nombre.trim(),
+        'nombre': nombre.trim(),
         'descripcion': descripcion?.trim(),
       });
 
-      return null; // null = éxito
-    } on PostgrestException catch (e) {
-      return 'Error al crear sector: ${e.message}';
+      return null;
     } catch (e) {
-      return 'Error inesperado: $e';
+      return 'Error al crear sector: $e';
     }
   }
 
-  // ── Actualizar sector ──────────────────────────────────────
+  // ── 🔥 ALIAS para tu UI (createSector) ─────────────────────
+  Future<String?> createSector(String nombre) async {
+    return crearSector(nombre: nombre);
+  }
+
+  // ── ACTUALIZAR SECTOR ──────────────────────────────────────
   Future<String?> actualizarSector({
     required String id,
     required String nombre,
@@ -60,31 +63,32 @@ class SectorService {
   }) async {
     try {
       await _supabase.from('sectores').update({
-        'nombre':      nombre.trim(),
+        'nombre': nombre.trim(),
         'descripcion': descripcion?.trim(),
       }).eq('id', id);
 
       return null;
-    } on PostgrestException catch (e) {
-      return 'Error al actualizar sector: ${e.message}';
     } catch (e) {
-      return 'Error inesperado: $e';
+      return 'Error al actualizar sector: $e';
     }
   }
 
-  // ── Eliminar sector ────────────────────────────────────────
+  // ── ELIMINAR SECTOR (original) ─────────────────────────────
   Future<String?> eliminarSector(String id) async {
     try {
       await _supabase.from('sectores').delete().eq('id', id);
       return null;
-    } on PostgrestException catch (e) {
-      return 'No se puede eliminar: tiene usuarios o vacunaciones asociadas';
     } catch (e) {
-      return 'Error al eliminar: $e';
+      return 'Error al eliminar sector: $e';
     }
   }
 
-  // ── Sectores con conteo de vacunaciones (para dashboard) ───
+  // ── 🔥 ALIAS para UI (deleteSector) ────────────────────────
+  Future<String?> deleteSector(String id) {
+    return eliminarSector(id);
+  }
+
+  // ── Sectores con conteo ────────────────────────────────────
   Future<List<Map<String, dynamic>>> getSectoresConConteo() async {
     try {
       final data = await _supabase.rpc('vacunas_por_sector');

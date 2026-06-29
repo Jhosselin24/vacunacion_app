@@ -1,65 +1,61 @@
-import 'package:hive/hive.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+// Modelo de Vacunación.
+//
+// ✅ Fix: se quitaron las anotaciones @HiveType / @HiveField y el
+// `extends HiveObject` que tenía esta clase. Esas anotaciones
+// requieren generar un adaptador (vacunacion.g.dart) con build_runner
+// y registrarlo con Hive.registerAdapter() antes de poder guardar
+// objetos Vacunacion directamente en una Hive box — ese adapter
+// nunca se generó, y el código real de la app NUNCA guarda objetos
+// Vacunacion en Hive: usa exclusivamente Maps planos a través de
+// toHiveMap() / fromHiveMap() (ver VacunacionService). Mantener las
+// anotaciones sin su adapter no rompía nada en tiempo de ejecución,
+// pero era código muerto que sugería un mecanismo de persistencia
+// que la app no usa.
+//
+// Si en el futuro se quiere guardar el objeto Vacunacion directamente
+// en Hive (en vez de un Map), hay que:
+//   1. Volver a anotar la clase con @HiveType(typeId: 0) y cada campo
+//      con @HiveField(n).
+//   2. Ejecutar: flutter pub run build_runner build
+//      (esto genera lib/models/vacunacion.g.dart con VacunacionAdapter).
+//   3. Registrar el adapter en main.dart, antes de abrir la box:
+//      Hive.registerAdapter(VacunacionAdapter());
 
-// ── Adaptador Hive para persistencia offline ───────────────
-// Ejecuta: flutter packages pub run build_runner build
-// para generar vacunacion.g.dart automáticamente.
-// O usa el toMap()/fromMap() manual que está al final.
-
-@HiveType(typeId: 0)
-class Vacunacion extends HiveObject {
-  @HiveField(0)
+class Vacunacion {
   final String id;
 
-  @HiveField(1)
   final String propietarioNombre;
 
-  @HiveField(2)
   final String propietarioCedula;
 
-  @HiveField(3)
   final String telefono;
 
-  @HiveField(4)
   final String tipoMascota; // 'perro' | 'gato'
 
-  @HiveField(5)
   final String mascotaNombre;
 
-  @HiveField(6)
   final String? edadAprox;
 
-  @HiveField(7)
   final String? sexo; // 'macho' | 'hembra'
 
-  @HiveField(8)
   final String vacuna;
 
-  @HiveField(9)
   final String? observaciones;
 
-  @HiveField(10)
   final String? fotoUrl;     // URL en Supabase Storage (online)
 
-  @HiveField(11)
   final String? fotoLocal;   // ruta local cuando está offline
 
-  @HiveField(12)
   final double? latitud;
 
-  @HiveField(13)
   final double? longitud;
 
-  @HiveField(14)
   final String? vacunadorId;
 
-  @HiveField(15)
   final String? sectorId;
 
-  @HiveField(16)
   final DateTime fecha;
 
-  @HiveField(17)
   final bool sincronizado; // false = pendiente de subir
 
   // Datos extra que vienen del JOIN con Supabase (no se guardan en Hive)

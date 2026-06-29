@@ -1,13 +1,17 @@
+import 'dart:io';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:postgrest/postgrest.dart'; // ✅ Fix: import para PostgrestFilterBuilder
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../models/vacunacion.dart';
 import '../core/constants.dart';
+import 'storage_service.dart';
+import 'package:flutter/foundation.dart';
 
 class VacunacionService {
   final _supabase = Supabase.instance.client;
   final _uuid     = const Uuid();
+  final _storageService = StorageService();
 
   Box get _hiveBox => Hive.box(AppConstants.hiveBoxVacunaciones);
 
@@ -57,18 +61,20 @@ class VacunacionService {
 
   // ── Editar vacunación ──────────────────────────────────────
   Future<String?> editarVacunacion(Vacunacion vacunacion) async {
-    try {
-      await _supabase
-          .from('vacunaciones')
-          .update(vacunacion.toUpdateJson())
-          .eq('id', vacunacion.id);
-      return null;
-    } on PostgrestException catch (e) {
-      return 'Error al actualizar: ${e.message}';
-    } catch (e) {
-      return 'Error inesperado: $e';
-    }
+  try {
+    await _supabase
+        .from('vacunaciones')
+        .update(vacunacion.toUpdateJson())
+        .eq('id', vacunacion.id);
+    return null;
+  } on PostgrestException catch (e) {
+    debugPrint('❌ PostgrestException editarVacunacion: ${e.message} | code: ${e.code}'); // ← agrega
+    return 'Error al actualizar: ${e.message}';
+  } catch (e) {
+    debugPrint('❌ Error inesperado editarVacunacion: $e'); // ← agrega
+    return 'Error inesperado: $e';
   }
+}
 
   // ── Eliminar vacunación ────────────────────────────────────
   Future<String?> eliminarVacunacion(String id) async {
@@ -81,18 +87,50 @@ class VacunacionService {
   }
 
   // ── Sincronizar offline ────────────────────────────────────
+  // ✅ Fix: si el registro tiene foto local pendiente (tomada sin
+  // conexión), primero se sube a Storage y se obtiene la URL antes
+  // de insertar el registro en Supabase. Si la subida de la foto
+  // falla, el registro NO se elimina de Hive y se reintenta en la
+  // próxima sincronización.
   Future<int> sincronizarOffline() async {
     final pendientes = _getVacunacionesOffline();
     int sincronizados = 0;
 
     for (final vacunacion in pendientes) {
       try {
+        var vacunacionFinal = vacunacion;
+
+        // Si hay foto local y todavía no se subió, subirla ahora.
+        if (vacunacion.fotoUrl == null &&
+            vacunacion.fotoLocal != null &&
+            vacunacion.fotoLocal!.isNotEmpty) {
+          final file = File(vacunacion.fotoLocal!);
+          if (await file.exists()) {
+            final resultado = await _storageService.subirFoto(
+              foto: file,
+              vacunadorId: vacunacion.vacunadorId ?? 'unknown',
+            );
+
+            if (resultado.containsKey('error')) {
+              // No se pudo subir la foto todavía (sigue sin haber
+              // buena conexión, por ejemplo). Se deja pendiente.
+              continue;
+            }
+
+            vacunacionFinal = vacunacion.copyWith(
+              fotoUrl: resultado['url'] as String,
+            );
+          }
+        }
+
         await _supabase
             .from('vacunaciones')
-            .insert(vacunacion.toInsertJson());
+            .insert(vacunacionFinal.toInsertJson());
         await _hiveBox.delete(vacunacion.id);
         sincronizados++;
-      } catch (_) {}
+      } catch (_) {
+        // Se mantiene en Hive para reintentar más adelante.
+      }
     }
 
     return sincronizados;

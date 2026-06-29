@@ -13,11 +13,10 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _formKey       = GlobalKey<FormState>();
-  final _emailCtrl     = TextEditingController();
-  final _passwordCtrl  = TextEditingController();
-  bool _obscurePass    = true;
-  bool _isLoading      = false;
+  final _formKey      = GlobalKey<FormState>();
+  final _emailCtrl    = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _obscurePass   = true;
   String? _error;
 
   @override
@@ -30,7 +29,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() { _isLoading = true; _error = null; });
+    setState(() => _error = null);
 
     final auth  = context.read<AuthProvider>();
     final error = await auth.login(
@@ -39,7 +38,6 @@ class _LoginPageState extends State<LoginPage> {
     );
 
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
     if (error != null) {
       setState(() => _error = error);
@@ -67,6 +65,9 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Leer isLoading desde el provider, no estado local
+    final isLoading = context.watch<AuthProvider>().isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -225,8 +226,8 @@ class _LoginPageState extends State<LoginPage> {
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _login,
-                        child: _isLoading
+                        onPressed: isLoading ? null : _login,
+                        child: isLoading
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,

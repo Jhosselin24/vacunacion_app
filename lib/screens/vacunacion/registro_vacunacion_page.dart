@@ -64,6 +64,8 @@ class _RegistroVacunacionPageState extends State<RegistroVacunacionPage> {
   bool    _isEditing = false;
   String? _editId;
   String? _error;
+  String?   _vacunadorIdOriginal;
+  DateTime? _fechaOriginal;
 
   @override
   void initState() {
@@ -104,6 +106,8 @@ class _RegistroVacunacionPageState extends State<RegistroVacunacionPage> {
     _sexo                 = v.sexo;
     _vacuna               = v.vacuna;
     _sectorId             = v.sectorId;
+    _vacunadorIdOriginal  = v.vacunadorId;
+    _fechaOriginal        = v.fecha;
     _latitud              = v.latitud;
     _longitud             = v.longitud;
     _fotoUrlExistente     = v.fotoUrl;
@@ -295,26 +299,28 @@ class _RegistroVacunacionPageState extends State<RegistroVacunacionPage> {
     }
 
     // 2. Construir objeto vacunacion
-    final vacunacion = Vacunacion(
-      id:                _isEditing ? _editId! : _uuid.v4(),
-      propietarioNombre: _propNombreCtrl.text.trim(),
-      propietarioCedula: _propCedulaCtrl.text.trim(),
-      telefono:          _propTelCtrl.text.trim(),
-      tipoMascota:       _tipoMascota!,
-      mascotaNombre:     _mascNombreCtrl.text.trim(),
-      edadAprox:         _edadCtrl.text.trim().isEmpty ? null : _edadCtrl.text.trim(),
-      sexo:              _sexo,
-      vacuna:            _vacuna!,
-      observaciones:     _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text.trim(),
-      fotoUrl:           fotoUrl,
-      fotoLocal:         _fotoFile?.path,
-      latitud:           _latitud,
-      longitud:          _longitud,
-      vacunadorId:       auth.userId,
-      sectorId:          _sectorId,
-      fecha:             DateTime.now(),
-      sincronizado:      fotoUrl != null,
-    );
+    // DESPUÉS
+final vacunacion = Vacunacion(
+  id:                _isEditing ? _editId! : _uuid.v4(),
+  propietarioNombre: _propNombreCtrl.text.trim(),
+  propietarioCedula: _propCedulaCtrl.text.trim(),
+  telefono:          _propTelCtrl.text.trim(),
+  tipoMascota:       _tipoMascota!,
+  mascotaNombre:     _mascNombreCtrl.text.trim(),
+  edadAprox:         _edadCtrl.text.trim().isEmpty ? null : _edadCtrl.text.trim(),
+  sexo:              _sexo,
+  vacuna:            _vacuna!,
+  observaciones:     _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text.trim(),
+  fotoUrl:           fotoUrl,
+  fotoLocal:         _fotoFile?.path,
+  latitud:           _latitud,
+  longitud:          _longitud,
+  // FIX: si está editando, conservar vacunador y fecha originales
+  vacunadorId:       _isEditing ? _vacunadorIdOriginal : auth.userId,
+  sectorId:          _sectorId,
+  fecha:             _isEditing ? _fechaOriginal! : DateTime.now(),
+  sincronizado:      fotoUrl != null,
+);
 
     // 3. Guardar
     String? error;

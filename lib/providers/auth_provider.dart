@@ -1,22 +1,55 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 
-import '../core/constants.dart';
+import '../services/local_storage_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final _supabase = Supabase.instance.client;
+  final _localStorage = LocalStorageService();
 
   Map<String, dynamic>? _usuarioData;
   bool _isLoading = false;
+  StreamSubscription? _authSubscription;
+
+  // ── Constructor: escuchar cambios de sesión ────────────────
+  AuthProvider() {
+    _authSubscription = _supabase.auth.onAuthStateChange.listen((data) async {
+      final event = data.event;
+      final user  = data.session?.user;
+
+      debugPrint('🔔 AuthEvent: $event');
+
+      if (event == AuthChangeEvent.signedIn && user != null) {
+        if (_usuarioData == null) {
+          await _cargarUsuario(user.id);
+          notifyListeners();
+        }
+      } else if (event == AuthChangeEvent.signedOut) {
+        _usuarioData = null;
+        notifyListeners();
+      } else if (event == AuthChangeEvent.tokenRefreshed && user != null) {
+        if (_usuarioData == null) {
+          await _cargarUsuario(user.id);
+          notifyListeners();
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
 
   // ── Getters ────────────────────────────────────────────────
-  bool get isLoggedIn    => _supabase.auth.currentUser != null && _usuarioData != null;
-  bool get isLoading     => _isLoading;
-  String? get rol        => _usuarioData?['rol'];
-  String? get userId     => _supabase.auth.currentUser?.id;
-  String? get sectorId   => _usuarioData?['sector_id'];
-  bool get primerLogin   => _usuarioData?['primer_login'] ?? false;
+  bool get isLoggedIn  => _supabase.auth.currentUser != null && _usuarioData != null;
+  bool get isLoading   => _isLoading;
+  String? get rol      => _usuarioData?['rol'];
+  String? get userId   => _supabase.auth.currentUser?.id;
+  String? get sectorId => _usuarioData?['sector_id'];
+  bool get primerLogin => _usuarioData?['primer_login'] ?? false;
   Map<String, dynamic>? get usuarioData => _usuarioData;
 
   String get nombreCompleto {
@@ -25,6 +58,10 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ── Inicializar sesión guardada ────────────────────────────
+  // ✅ Fix: si no hay conexión, se usa el perfil guardado en Hive
+  // (LocalStorageService) para no dejar al usuario sin sesión solo
+  // porque la consulta a Supabase falló por falta de red. Si hay
+  // conexión, se intenta refrescar el perfil desde el servidor.
   Future<void> inicializarSesion() async {
     _isLoading = true;
     notifyListeners();
@@ -32,11 +69,20 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = _supabase.auth.currentUser;
       if (user != null) {
-        await _cargarUsuario(user.id);
+        // 1. Cargar primero lo que haya en caché local (instantáneo,
+        //    funciona sin conexión).
+        final cache = _localStorage.leerUsuario();
+        if (cache != null && cache['id'] == user.id) {
+          _usuarioData = cache;
+        }
+
+        // 2. Intentar refrescar desde Supabase. Si falla (sin
+        //    conexión, por ejemplo) y ya tenemos caché, se conserva
+        //    la sesión con los datos locales.
+        await _cargarUsuario(user.id, mantenerSiFalla: _usuarioData != null);
       }
     } catch (e) {
       debugPrint('Error inicializando sesión: $e');
-      _usuarioData = null;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -56,28 +102,19 @@ class AuthProvider extends ChangeNotifier {
 
       if (response.user == null) return 'Credenciales incorrectas';
 
-      // ✅ Fix: reintentar carga de usuario hasta 3 veces con delay creciente
-      // para dar tiempo a que la sesión JWT se propague en Supabase
-      Map<String, dynamic>? data;
-      for (int i = 0; i < 3; i++) {
-        await Future.delayed(Duration(milliseconds: 300 * (i + 1)));
-        data = await _intentarCargarUsuario(response.user!.id);
-        if (data != null) break;
-        debugPrint('⏳ Intento ${i + 1} fallido, reintentando...');
-      }
+      // Cargar usuario directamente sin depender del listener
+      await _cargarUsuario(response.user!.id);
 
-      if (data == null) {
+      if (_usuarioData == null) {
         await _supabase.auth.signOut();
         return 'No se encontró el perfil del usuario. Contacta al administrador.';
       }
 
-      _usuarioData = data;
+      // ✅ Notificar ANTES de retornar, para que el router vea isLoggedIn = true
+      _isLoading = false;
+      notifyListeners();
 
-      // Guardar en Hive para acceso offline
-      final box = Hive.box(AppConstants.hiveBoxUsuario);
-      await box.put('usuario', data);
-
-      debugPrint('✅ Login exitoso: ${data['email']} | rol: ${data['rol']}');
+      debugPrint('✅ Login exitoso: ${_usuarioData!['email']} | rol: ${_usuarioData!['rol']}');
       return null;
 
     } on AuthException catch (e) {
@@ -87,8 +124,11 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('Error inesperado en login: $e');
       return 'Error inesperado: $e';
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      // Solo actualiza si aún no lo hicimos (caso de error)
+      if (_isLoading) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -96,8 +136,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _supabase.auth.signOut();
     _usuarioData = null;
-    final box = Hive.box(AppConstants.hiveBoxUsuario);
-    await box.clear();
+    await _localStorage.limpiarSesion();
     notifyListeners();
   }
 
@@ -135,23 +174,11 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Intentar cargar usuario (sin lanzar excepción) ─────────
-  Future<Map<String, dynamic>?> _intentarCargarUsuario(String userId) async {
-    try {
-      final data = await _supabase
-          .from('usuarios')
-          .select()
-          .eq('id', userId)
-          .single();
-      return data;
-    } catch (e) {
-      debugPrint('❌ Error cargando usuario ($userId): $e');
-      return null;
-    }
-  }
-
   // ── Cargar datos del usuario desde Supabase ────────────────
-  Future<void> _cargarUsuario(String userId) async {
+  // ✅ Fix: usa LocalStorageService en lugar de tocar la Hive box
+  // directamente, y permite conservar los datos ya cargados
+  // (de caché) si la consulta de red falla, en vez de borrarlos.
+  Future<void> _cargarUsuario(String userId, {bool mantenerSiFalla = false}) async {
     try {
       final data = await _supabase
           .from('usuarios')
@@ -160,13 +187,13 @@ class AuthProvider extends ChangeNotifier {
           .single();
 
       _usuarioData = data;
-
-      final box = Hive.box(AppConstants.hiveBoxUsuario);
-      await box.put('usuario', data);
+      await _localStorage.guardarUsuario(data);
 
       debugPrint('✅ Usuario cargado: ${data['email']} | rol: ${data['rol']}');
     } catch (e) {
-      _usuarioData = null;
+      if (!mantenerSiFalla) {
+        _usuarioData = null;
+      }
       debugPrint('❌ Error cargando usuario ($userId): $e');
     }
   }

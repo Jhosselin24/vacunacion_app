@@ -33,14 +33,16 @@ class _UserFormPageState extends State<UserFormPage> {
   String?  _sectorSeleccionado;
   bool     _isLoading  = false;
   bool     _isEditing  = false;
+  // FIX Bug 2+4: si es coordinador brigada creando, bloquear sector al suyo
+  bool     _sectorFijo = false;
   String?  _error;
   String?  _usuarioId;
 
   @override
   void initState() {
     super.initState();
-    _cargarSectores();
     _inicializarForm();
+    _cargarSectores();
   }
 
   @override
@@ -55,35 +57,58 @@ class _UserFormPageState extends State<UserFormPage> {
 
   void _inicializarForm() {
     final extra = widget.usuarioEditar;
+    final auth  = context.read<AuthProvider>();
+
     if (extra == null) {
-      // Nuevo usuario: tomar rol del extra si viene
-      _rolSeleccionado = extra?['rol'] as String?;
+      // Nuevo usuario sin datos extra: preseleccionar sector si es brigada
+      if (auth.rol == AppRoles.coordinadorBrigada && auth.sectorId != null) {
+        _sectorSeleccionado = auth.sectorId;
+        _sectorFijo = true;
+      }
       return;
     }
 
     // Editar usuario existente
     final usuario = extra['usuario'] as Map<String, dynamic>?;
     if (usuario != null) {
-      _isEditing         = true;
-      _usuarioId         = usuario['id'] as String?;
-      _cedulaCtrl.text   = usuario['cedula'] ?? '';
-      _nombresCtrl.text  = usuario['nombres'] ?? '';
-      _apellCtrl.text    = usuario['apellidos'] ?? '';
-      _telCtrl.text      = usuario['telefono'] ?? '';
-      _emailCtrl.text    = usuario['email'] ?? '';
-      _rolSeleccionado   = usuario['rol'] as String?;
+      _isEditing          = true;
+      _usuarioId          = usuario['id'] as String?;
+      _cedulaCtrl.text    = usuario['cedula'] ?? '';
+      _nombresCtrl.text   = usuario['nombres'] ?? '';
+      _apellCtrl.text     = usuario['apellidos'] ?? '';
+      _telCtrl.text       = usuario['telefono'] ?? '';
+      _emailCtrl.text     = usuario['email'] ?? '';
+      _rolSeleccionado    = usuario['rol'] as String?;
       _sectorSeleccionado = usuario['sector_id'] as String?;
     }
 
-    // Solo rol pre-seleccionado
+    // Preseleccionar rol si viene del listado
     if (extra.containsKey('rol') && !_isEditing) {
       _rolSeleccionado = extra['rol'] as String?;
+    }
+
+    // FIX Bug 2+4: coordinador brigada creando → sector fijo al suyo
+    if (!_isEditing &&
+        auth.rol == AppRoles.coordinadorBrigada &&
+        auth.sectorId != null) {
+      _sectorSeleccionado = auth.sectorId;
+      _sectorFijo = true;
     }
   }
 
   Future<void> _cargarSectores() async {
     try {
-      final data = await _sectorService.getSectores();
+      final auth = context.read<AuthProvider>();
+      List<Sector> data;
+
+      // FIX: brigada solo necesita ver su propio sector en el dropdown
+      if (auth.rol == AppRoles.coordinadorBrigada && auth.sectorId != null) {
+        data = await _sectorService.getSectores();
+        data = data.where((s) => s.id == auth.sectorId).toList();
+      } else {
+        data = await _sectorService.getSectores();
+      }
+
       setState(() => _sectores = data);
     } catch (_) {}
   }
@@ -149,7 +174,7 @@ class _UserFormPageState extends State<UserFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.read<AuthProvider>();
+    final auth  = context.read<AuthProvider>();
     final roles = _rolesDisponibles(auth.rol ?? '');
 
     return Scaffold(
@@ -328,21 +353,59 @@ class _UserFormPageState extends State<UserFormPage> {
               ],
 
               // ── Sector ────────────────────────────────────
-              _buildLabel('Sector (opcional)'),
-              DropdownButtonFormField<String>(
-                value: _sectorSeleccionado,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.map_outlined),
-                  hintText: 'Asignar sector',
+              // FIX Bug 2+4: si _sectorFijo, mostrar solo el sector del
+              // coordinador de brigada como texto informativo (no editable).
+              _buildLabel(_sectorFijo ? 'Sector asignado' : 'Sector (opcional)'),
+              if (_sectorFijo) ...[
+                // Sector del coordinador de brigada, no modificable
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySurface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.primaryLight),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.map_outlined,
+                          color: AppColors.primary, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _sectores.isNotEmpty
+                              ? (_sectores.firstWhere(
+                                  (s) => s.id == _sectorSeleccionado,
+                                  orElse: () => _sectores.first,
+                                ).nombre)
+                              : 'Cargando sector…',
+                          style: AppTextStyles.body
+                              .copyWith(color: AppColors.primaryDark),
+                        ),
+                      ),
+                      const Icon(Icons.lock_outline,
+                          color: AppColors.primaryLight, size: 16),
+                    ],
+                  ),
                 ),
-                items: [
-                  const DropdownMenuItem(
-                      value: null, child: Text('Sin sector')),
-                  ..._sectores.map((s) =>
-                      DropdownMenuItem(value: s.id, child: Text(s.nombre))),
-                ],
-                onChanged: (v) => setState(() => _sectorSeleccionado = v),
-              ),
+              ] else ...[
+                DropdownButtonFormField<String>(
+                  value: _sectores.any((s) => s.id == _sectorSeleccionado)
+                    ? _sectorSeleccionado
+                  : null,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.map_outlined),
+                    hintText: 'Asignar sector',
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                        value: null, child: Text('Sin sector')),
+                    ..._sectores.map((s) =>
+                        DropdownMenuItem(value: s.id, child: Text(s.nombre))),
+                  ],
+                  onChanged: (v) => setState(() => _sectorSeleccionado = v),
+                ),
+              ],
 
               // Error
               if (_error != null) ...[
