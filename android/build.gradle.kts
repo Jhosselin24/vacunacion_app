@@ -3,6 +3,13 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // ✅ Fix: forzar compileSdk 36 en todos los subproyectos (plugins incluidos)
+    afterEvaluate {
+        extensions.findByType<com.android.build.gradle.BaseExtension>()?.apply {
+            compileSdkVersion(36)
+        }
+    }
 }
 
 val newBuildDir: Directory =

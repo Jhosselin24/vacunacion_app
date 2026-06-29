@@ -1,91 +1,269 @@
 import 'package:flutter/material.dart';
-import 'forgot_password.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-class LoginPage extends StatelessWidget {
+import '../../core/constants.dart';
+import '../../providers/auth_provider.dart';
 
-  LoginPage({super.key});
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
-  final emailController = TextEditingController();
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
 
-  final passwordController = TextEditingController();
+class _LoginPageState extends State<LoginPage> {
+  final _formKey       = GlobalKey<FormState>();
+  final _emailCtrl     = TextEditingController();
+  final _passwordCtrl  = TextEditingController();
+  bool _obscurePass    = true;
+  bool _isLoading      = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() { _isLoading = true; _error = null; });
+
+    final auth  = context.read<AuthProvider>();
+    final error = await auth.login(
+      _emailCtrl.text.trim(),
+      _passwordCtrl.text.trim(),
+    );
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (error != null) {
+      setState(() => _error = error);
+      return;
+    }
+
+    // Primer login → forzar cambio de contraseña
+    if (auth.primerLogin) {
+      context.go(AppConstants.routeChangePassword);
+      return;
+    }
+
+    // Redirigir según rol
+    switch (auth.rol) {
+      case AppRoles.coordinadorCampania:
+        context.go(AppConstants.routeAdminDashboard);
+      case AppRoles.coordinadorBrigada:
+        context.go(AppConstants.routeBrigadaDashboard);
+      case AppRoles.vacunador:
+        context.go(AppConstants.routeVacunadorDashboard);
+      default:
+        setState(() => _error = 'Rol no reconocido');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 32),
 
-      appBar: AppBar(
-
-        title: const Text("Vacunación"),
-
-      ),
-
-      body: Padding(
-
-        padding: const EdgeInsets.all(20),
-
-        child: Column(
-
-          children: [
-
-            TextField(
-
-              controller: emailController,
-
-              decoration: const InputDecoration(
-
-                labelText: "Correo",
-
+              // ── Logo / Ícono ─────────────────────────────
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withOpacity(0.35),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.vaccines_rounded,
+                  size: 52,
+                  color: AppColors.white,
+                ),
               ),
 
-            ),
+              const SizedBox(height: 28),
 
-            const SizedBox(height:20),
-
-            TextField(
-
-              controller: passwordController,
-
-              obscureText: true,
-
-              decoration: const InputDecoration(
-
-                labelText: "Contraseña",
-
+              // ── Título ───────────────────────────────────
+              Text(
+                'Vacunación',
+                style: AppTextStyles.heading1.copyWith(
+                  color: AppColors.primary,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Canina y Felina',
+                style: AppTextStyles.heading2.copyWith(
+                  color: AppColors.primaryDark,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Municipio de Quito',
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.textSecondary,
+                  letterSpacing: 1.2,
+                ),
               ),
 
-            ),
+              const SizedBox(height: 48),
 
-            const SizedBox(height:30),
+              // ── Formulario ───────────────────────────────
+              Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    // Email
+                    TextFormField(
+                      controller: _emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Correo electrónico',
+                        hintText: 'ejemplo@correo.com',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Ingresa tu correo';
+                        }
+                        if (!v.contains('@')) {
+                          return 'Correo inválido';
+                        }
+                        return null;
+                      },
+                    ),
 
-            ElevatedButton(
+                    const SizedBox(height: 16),
 
-              onPressed: () {},
+                    // Contraseña
+                    TextFormField(
+                      controller: _passwordCtrl,
+                      obscureText: _obscurePass,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _login(),
+                      decoration: InputDecoration(
+                        labelText: 'Contraseña',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePass
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                          onPressed: () =>
+                              setState(() => _obscurePass = !_obscurePass),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
+                        return null;
+                      },
+                    ),
 
-              child: const Text("Ingresar"),
+                    // Error
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppColors.error.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: AppColors.error,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: AppTextStyles.caption.copyWith(
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
 
-            ),
-          TextButton(
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ForgotPasswordPage(),
-      ),
-    );
-  },
-  child: const Text(
-    "¿Olvidó su contraseña?",
-  ),
-),
-          ],
+                    const SizedBox(height: 28),
 
+                    // Botón de ingreso
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _login,
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: AppColors.white,
+                                ),
+                              )
+                            : const Text('Ingresar'),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Olvidé mi contraseña
+                    TextButton(
+                      onPressed: () =>
+                          context.go(AppConstants.routeForgotPassword),
+                      child: const Text('¿Olvidaste tu contraseña?'),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 48),
+
+              // Footer
+              Text(
+                'Sistema de Gestión Municipal',
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.textSecondary.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
         ),
-
       ),
-
     );
-
   }
-
 }

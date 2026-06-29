@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../services/auth_service.dart';
-import '../../core/supabase.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
+import '../../core/constants.dart';
+import '../../providers/auth_provider.dart';
 
 class ChangePasswordPage extends StatefulWidget {
   const ChangePasswordPage({super.key});
@@ -10,201 +13,259 @@ class ChangePasswordPage extends StatefulWidget {
 }
 
 class _ChangePasswordPageState extends State<ChangePasswordPage> {
-  final AuthService authService = AuthService();
-
-  final TextEditingController passwordController =
-      TextEditingController();
-
-  final TextEditingController confirmPasswordController =
-      TextEditingController();
-
-  bool loading = false;
-  bool ocultarPassword = true;
-  bool ocultarConfirmacion = true;
-
-  Future<void> cambiarPassword() async {
-    final password = passwordController.text.trim();
-    final confirmacion = confirmPasswordController.text.trim();
-
-    if (password.isEmpty || confirmacion.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Complete todos los campos"),
-        ),
-      );
-      return;
-    }
-
-    if (password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "La contraseña debe tener al menos 6 caracteres",
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (password != confirmacion) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Las contraseñas no coinciden",
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      loading = true;
-    });
-
-    try {
-      // Cambiar contraseña en Supabase Auth
-      await authService.changePassword(password);
-
-      // Actualizar primer_login = false
-      final user = authService.currentUser;
-
-      if (user != null) {
-        await supabase
-            .from('usuarios')
-            .update({
-              'primer_login': false,
-            })
-            .eq('id', user.id);
-      }
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Colors.green,
-          content: Text(
-            "Contraseña actualizada correctamente",
-          ),
-        ),
-      );
-
-      Navigator.pop(context);
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: Colors.red,
-          content: Text(e.toString()),
-        ),
-      );
-    }
-
-    setState(() {
-      loading = false;
-    });
-  }
+  final _formKey        = GlobalKey<FormState>();
+  final _nuevaCtrl      = TextEditingController();
+  final _confirmarCtrl  = TextEditingController();
+  bool _obscureNueva    = true;
+  bool _obscureConfirm  = true;
+  bool _isLoading       = false;
+  String? _error;
 
   @override
   void dispose() {
-    passwordController.dispose();
-    confirmPasswordController.dispose();
+    _nuevaCtrl.dispose();
+    _confirmarCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _cambiarPassword() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() { _isLoading = true; _error = null; });
+
+    final auth  = context.read<AuthProvider>();
+    final error = await auth.cambiarPassword(_nuevaCtrl.text.trim());
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (error != null) {
+      setState(() => _error = error);
+      return;
+    }
+
+    // Mostrar éxito y redirigir según rol
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ Contraseña actualizada correctamente'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+
+    switch (auth.rol) {
+      case AppRoles.coordinadorCampania:
+        context.go(AppConstants.routeAdminDashboard);
+      case AppRoles.coordinadorBrigada:
+        context.go(AppConstants.routeBrigadaDashboard);
+      case AppRoles.vacunador:
+        context.go(AppConstants.routeVacunadorDashboard);
+      default:
+        context.go(AppConstants.routeLogin);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Cambiar contraseña"),
-        automaticallyImplyLeading: false,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
 
-            const SizedBox(height: 20),
-
-            const Icon(
-              Icons.lock_outline,
-              size: 90,
-              color: Colors.blue,
-            ),
-
-            const SizedBox(height: 20),
-
-            const Text(
-              "Debe cambiar su contraseña antes de continuar.",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16),
-            ),
-
-            const SizedBox(height: 30),
-
-            TextField(
-              controller: passwordController,
-              obscureText: ocultarPassword,
-              decoration: InputDecoration(
-                labelText: "Nueva contraseña",
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.lock),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    ocultarPassword
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+              // ── Encabezado ───────────────────────────────
+              Center(
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySurface,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppColors.primary,
+                      width: 2,
+                    ),
                   ),
-                  onPressed: () {
-                    setState(() {
-                      ocultarPassword = !ocultarPassword;
-                    });
-                  },
+                  child: const Icon(
+                    Icons.lock_reset_rounded,
+                    size: 40,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 28),
 
-            TextField(
-              controller: confirmPasswordController,
-              obscureText: ocultarConfirmacion,
-              decoration: InputDecoration(
-                labelText: "Confirmar contraseña",
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.lock),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    ocultarConfirmacion
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+              Center(
+                child: Text(
+                  'Crea tu contraseña',
+                  style: AppTextStyles.heading1.copyWith(
+                    color: AppColors.primary,
                   ),
-                  onPressed: () {
-                    setState(() {
-                      ocultarConfirmacion = !ocultarConfirmacion;
-                    });
-                  },
                 ),
               ),
-            ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  'Por seguridad debes cambiar\ntu contraseña inicial.',
+                  style: AppTextStyles.bodySecondary,
+                  textAlign: TextAlign.center,
+                ),
+              ),
 
-            const SizedBox(height: 30),
+              const SizedBox(height: 12),
 
-            SizedBox(
-              height: 50,
-              child: ElevatedButton(
-                onPressed: loading ? null : cambiarPassword,
-                child: loading
-                    ? const CircularProgressIndicator(
-                        color: Colors.white,
-                      )
-                    : const Text(
-                        "Guardar contraseña",
+              // Banner informativo
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primaryLight),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'La nueva contraseña debe tener al menos 6 caracteres.',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.primaryDark,
+                        ),
                       ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 32),
+
+              // ── Formulario ───────────────────────────────
+              Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    // Nueva contraseña
+                    TextFormField(
+                      controller: _nuevaCtrl,
+                      obscureText: _obscureNueva,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Nueva contraseña',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureNueva
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                          onPressed: () =>
+                              setState(() => _obscureNueva = !_obscureNueva),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Ingresa la nueva contraseña';
+                        }
+                        if (v.length < 6) {
+                          return 'Mínimo 6 caracteres';
+                        }
+                        if (v == AppConstants.passwordInicial) {
+                          return 'No puedes usar la contraseña inicial';
+                        }
+                        return null;
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Confirmar contraseña
+                    TextFormField(
+                      controller: _confirmarCtrl,
+                      obscureText: _obscureConfirm,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _cambiarPassword(),
+                      decoration: InputDecoration(
+                        labelText: 'Confirmar contraseña',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                          onPressed: () => setState(
+                              () => _obscureConfirm = !_obscureConfirm),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Confirma tu contraseña';
+                        }
+                        if (v != _nuevaCtrl.text) {
+                          return 'Las contraseñas no coinciden';
+                        }
+                        return null;
+                      },
+                    ),
+
+                    // Error
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: AppColors.error.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          _error!,
+                          style: AppTextStyles.caption
+                              .copyWith(color: AppColors.error),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 32),
+
+                    // Botón guardar
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _cambiarPassword,
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: AppColors.white,
+                                ),
+                              )
+                            : const Text('Guardar contraseña'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
