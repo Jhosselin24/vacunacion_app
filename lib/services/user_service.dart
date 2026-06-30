@@ -50,8 +50,12 @@ class UserService {
     }
   }
 
-  // ── Crear usuario via Database Function ────────────────────
-  // ✅ Fix: usa RPC en lugar de auth.admin (que requiere service_role key)
+  // ── Crear usuario via Edge Function ─────────────────────────
+  // ✅ Fix: la creación de usuarios de Auth requiere la Admin API de
+  // Supabase (service_role key), que nunca debe vivir en el cliente
+  // Flutter. Por eso se invoca una Edge Function (`crear-usuario`)
+  // que corre en el servidor con esa clave y crea tanto el usuario
+  // de Auth como su fila en `public.usuarios` de forma atómica.
   Future<String?> crearUsuario({
     required String cedula,
     required String nombres,
@@ -62,27 +66,36 @@ class UserService {
     String? sectorId,
   }) async {
     try {
-      final result = await _supabase.rpc('crear_usuario_auth', params: {
-        'p_email':     email,
-        'p_password':  AppConstants.passwordInicial,
-        'p_cedula':    cedula,
-        'p_nombres':   nombres,
-        'p_apellidos': apellidos,
-        'p_telefono':  telefono,
-        'p_rol':       rol,
-        'p_sector_id': sectorId,
-      });
+      final response = await _supabase.functions.invoke(
+        'crear-usuario',
+        body: {
+          'email':     email,
+          'password':  AppConstants.passwordInicial,
+          'cedula':    cedula,
+          'nombres':   nombres,
+          'apellidos': apellidos,
+          'telefono':  telefono,
+          'rol':       rol,
+          'sector_id': sectorId,
+        },
+      );
 
-      if (result == null) {
-        return 'El correo ya está registrado';
+      final data = response.data;
+
+      // La Edge Function responde con status != 200 en caso de error,
+      // pero el cliente de supabase_flutter igual entrega `data` con
+      // el cuerpo del error en ese caso.
+      if (data is Map && data['error'] != null) {
+        return data['error'] as String;
       }
 
       return null; // null = éxito
-    } on PostgrestException catch (e) {
-      if (e.message.contains('unique') || e.message.contains('duplicate')) {
-        return 'La cédula o correo ya están registrados';
+    } on FunctionException catch (e) {
+      final detalle = e.details;
+      if (detalle is Map && detalle['error'] != null) {
+        return detalle['error'] as String;
       }
-      return 'Error al crear usuario: ${e.message}';
+      return 'Error al crear usuario (${e.status})';
     } catch (e) {
       return 'Error inesperado: $e';
     }
@@ -149,13 +162,32 @@ class UserService {
     }
   }
 
-  // ── Eliminar usuario ───────────────────────────────────────
+  // ── Eliminar usuario via Edge Function ─────────────────────
+  // ✅ Fix: eliminar el auth user requiere la Admin API (service_role
+  // key), igual que crearlo. Antes solo se borraba la fila de
+  // `public.usuarios`, lo cual además podía no hacer nada en
+  // silencio si RLS bloqueaba el DELETE (sin lanzar excepción).
   Future<String?> eliminarUsuario(String id) async {
     try {
-      await _supabase.from('usuarios').delete().eq('id', id);
-      return null;
+      final response = await _supabase.functions.invoke(
+        'eliminar-usuario',
+        body: {'id': id},
+      );
+
+      final data = response.data;
+      if (data is Map && data['error'] != null) {
+        return data['error'] as String;
+      }
+
+      return null; // null = éxito
+    } on FunctionException catch (e) {
+      final detalle = e.details;
+      if (detalle is Map && detalle['error'] != null) {
+        return detalle['error'] as String;
+      }
+      return 'Error al eliminar usuario (${e.status})';
     } catch (e) {
-      return 'Error al eliminar usuario: $e';
+      return 'Error inesperado: $e';
     }
   }
 

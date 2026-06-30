@@ -260,6 +260,7 @@ class AppConstants {
   static const String routeVacunadorDashboard = '/vacunador';
   static const String routeSectores       = '/sectores';
   static const String routeAddSector      = '/sectores/add';
+  static const String routeMiSector       = '/mi-sector';
   static const String routeUsuarios       = '/usuarios';
   static const String routeAddUsuario     = '/usuarios/form';
   static const String routeVacunaciones   = '/vacunaciones';

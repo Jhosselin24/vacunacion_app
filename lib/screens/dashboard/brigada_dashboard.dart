@@ -147,14 +147,29 @@ class _BrigadaDashboardState extends State<BrigadaDashboard> {
   }
 
   Widget _buildSaludo(String nombre) {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Bienvenido,', style: AppTextStyles.bodySecondary),
-        Text(nombre,
-            style: AppTextStyles.heading2.copyWith(color: AppColors.primary)),
-        Text(AppRoles.nombreLegible(AppRoles.coordinadorBrigada),
-            style: AppTextStyles.caption),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Bienvenido,', style: AppTextStyles.bodySecondary),
+              Text(nombre,
+                  style: AppTextStyles.heading2.copyWith(color: AppColors.primary)),
+              Text(AppRoles.nombreLegible(AppRoles.coordinadorBrigada),
+                  style: AppTextStyles.caption),
+            ],
+          ),
+        ),
+        // ✅ Fix: acceso visible al sector asignado (antes el
+        // coordinador de brigada no tenía ninguna forma de llegar
+        // a esta información desde la app).
+        IconButton.filledTonal(
+          onPressed: () => context.push(AppConstants.routeMiSector),
+          icon: const Icon(Icons.map_rounded),
+          tooltip: 'Ver mi sector asignado',
+        ),
       ],
     );
   }

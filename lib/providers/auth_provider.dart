@@ -141,16 +141,33 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ── Cambiar contraseña ─────────────────────────────────────
+  // ✅ Fix: antes, si el UPDATE de `primer_login` era bloqueado en
+  // silencio por RLS (0 filas afectadas, sin lanzar excepción), el
+  // cambio solo quedaba en memoria local. Al cerrar sesión y volver
+  // a entrar, `_cargarUsuario()` releía `primer_login: true` desde
+  // Supabase y la app pedía cambiar la contraseña otra vez. Ahora se
+  // usa `.select()` para detectar si realmente se actualizó alguna
+  // fila, y se informa el error en vez de fallar en silencio.
   Future<String?> cambiarPassword(String nuevaPassword) async {
     try {
       await _supabase.auth.updateUser(
         UserAttributes(password: nuevaPassword),
       );
 
-      await _supabase
+      final actualizado = await _supabase
           .from('usuarios')
           .update({'primer_login': false})
-          .eq('id', userId!);
+          .eq('id', userId!)
+          .select();
+
+      if ((actualizado as List).isEmpty) {
+        // El UPDATE no afectó ninguna fila: probablemente RLS lo
+        // bloqueó. La contraseña en Auth SÍ se cambió, pero no se
+        // pudo marcar primer_login = false.
+        return 'La contraseña se cambió, pero no se pudo actualizar '
+            'tu perfil. Contacta al administrador (revisar permisos '
+            'de actualización en la tabla usuarios).';
+      }
 
       _usuarioData!['primer_login'] = false;
       notifyListeners();

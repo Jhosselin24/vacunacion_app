@@ -16,6 +16,7 @@ import 'screens/dashboard/brigada_dashboard.dart';
 import 'screens/dashboard/vacunador_dashboard.dart';
 import 'screens/sectores/sector_page.dart';
 import 'screens/sectores/add_sector_page.dart';
+import 'screens/sectores/mi_sector_page.dart';
 import 'screens/usuarios/user_list_page.dart';
 import 'screens/usuarios/user_form_page.dart';
 import 'screens/vacunacion/registro_vacunacion_page.dart';
@@ -158,6 +159,10 @@ class _MyAppState extends State<MyApp> {
         GoRoute(
           path: AppConstants.routeAddSector,
           builder: (_, __) => const AddSectorPage(),
+        ),
+        GoRoute(
+          path: AppConstants.routeMiSector,
+          builder: (_, __) => const MiSectorPage(),
         ),
 
         // Usuarios

@@ -73,8 +73,20 @@ class _UserListPageState extends State<UserListPage>
         usuarios   = await _userService.getUsuarios();
         _rolFiltro = AppRoles.coordinadorBrigada;
       } else {
-        // Brigada solo ve vacunadores de su sector
-        usuarios   = await _userService.getVacunadoresPorSector(auth.sectorId!);
+        // ✅ Fix: el coordinador de brigada necesita ver, además de los
+        // vacunadores ya asignados a su sector, los que aún no tienen
+        // sector asignado — de lo contrario nunca puede "reclutarlos"
+        // (el botón de asignar sector nunca aparecía porque esos
+        // vacunadores ni siquiera entraban en la lista).
+        final delSector  = await _userService.getVacunadoresPorSector(auth.sectorId!);
+        final todosVac   = await _userService.getUsuariosPorRol(AppRoles.vacunador);
+        final sinSector  = todosVac.where((u) => u.sectorId == null);
+
+        final ids = <String>{};
+        usuarios = [
+          for (final u in [...delSector, ...sinSector])
+            if (ids.add(u.id)) u,
+        ];
         _rolFiltro = AppRoles.vacunador;
       }
 
