@@ -336,3 +336,9 @@ Proyecto académico — Desarrollo de Aplicaciones Móviles
 ## 📄 Licencia
 
 Este proyecto fue desarrollado con fines académicos.
+
+## 📹 Video 
+
+Emilio Erazo
+ 
+https://vt.tiktok.com/ZSCHMXLb7/ 
